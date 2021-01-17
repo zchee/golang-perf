@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: golang.org/x/perf/cmd/benchstat/testdata
+       │     gob     │                json                 │
+       │   sec/op    │   sec/op     vs base                │
+Encode   3.070µ ± 2%   1.423µ ± 1%  -53.66% (p=0.000 n=10)

@@ -1,4 +1,4 @@
-// Copyright 2017 The Go Authors. All rights reserved.
+// Copyright 2021 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -6,121 +6,121 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func dotSlash(s string) string {
-	return "." + string(filepath.Separator) + s
+func TestDoc(t *testing.T) {
+	// Test examples used in the command documentation.
+	// If any of these change, be sure to update the
+	// documentation.
+
+	golden(t, "docOldNew", "old.txt", "new.txt")
+
+	golden(t, "docColFormat", "-col", "/format", "new.txt")
+	golden(t, "docColFormat2", "-col", "/format", "-row", ".name", "-ignore", ".label", "new.txt")
+	golden(t, "docLabels", "A=old.txt", "B=new.txt")
+	golden(t, "docRowName", "-row", ".name", "new.txt")
+
+	golden(t, "docSorting", "-col", "/format@(gob json)", "-row", ".name", "-ignore", ".label", "new.txt")
 }
 
-func TestGolden(t *testing.T) {
+func TestCSV(t *testing.T) {
+	golden(t, "csvOldNew", "-format", "csv", "old.txt", "new.txt")
+	golden(t, "csvErrors", "-format", "csv", "-row", ".name", "new.txt")
+}
+
+func TestCRC(t *testing.T) {
+	// These have a "note" that "unexpectedly" splits the tables,
+	// and also two units.
+	golden(t, "crcOldNew", "crc-old.txt", "crc-new.txt")
+	// "Fix" the split by note.
+	golden(t, "crcIgnore", "-ignore", "note", "crc-old.txt", "crc-new.txt")
+
+	// Filter to aligned, put size on the X axis and poly on the Y axis.
+	golden(t, "crcSizeVsPoly", "-filter", "/align:0", "-row", "/size", "-col", "/poly", "crc-new.txt")
+}
+
+func TestUnits(t *testing.T) {
+	// Test unit metadata. This tests exact assumptions and
+	// warnings for inexact distributions.
+	golden(t, "units", "-col", "note", "units.txt")
+}
+
+func TestZero(t *testing.T) {
+	// Test printing of near-zero deltas.
+	golden(t, "zero", "-col", "note", "zero.txt")
+}
+
+func TestSmallSample(t *testing.T) {
+	// These benchmarks don't have enough samples to compute a CI
+	// or delta.
+	golden(t, "smallSample", "-col", "note", "-ignore", ".label", "smallSample.txt")
+}
+
+func TestIssue19565(t *testing.T) {
+	// Benchmark sets are inconsistent between columns. We show
+	// all results, but warn that the geomeans may not be
+	// comparable.
+	golden(t, "issue19565", "-col", "note", "-ignore", ".label", "issue19565.txt")
+}
+
+func TestIssue19634(t *testing.T) {
+	golden(t, "issue19634", "-col", "note", "-ignore", ".label", "issue19634.txt")
+}
+
+func golden(t *testing.T, name string, args ...string) {
+	t.Helper()
+	// TODO: If benchfmt.Files supported fs.FS, we wouldn't need this.
 	if err := os.Chdir("testdata"); err != nil {
 		t.Fatal(err)
 	}
 	defer os.Chdir("..")
-	check(t, "exampleold", "exampleold.txt")
-	check(t, "example", "exampleold.txt", "examplenew.txt")
-	if t.Failed() {
-		t.Fatal("skipping other tests")
-	}
-	check(t, "exampleoldhtml", "-html", "exampleold.txt")
-	check(t, "examplehtml", "-html", "exampleold.txt", "examplenew.txt")
-	if t.Failed() {
-		t.Fatal("skipping other tests")
-	}
-	check(t, "all", "new.txt", "old.txt", "slashslash4.txt", "x386.txt")
-	check(t, "allnosplit", "-split", "", "new.txt", "old.txt", "slashslash4.txt", "x386.txt")
-	check(t, "oldnew", "old.txt", "new.txt")
-	check(t, "oldnewgeo", "-geomean", "old.txt", "new.txt")
-	check(t, "new4", "new.txt", "slashslash4.txt")
-	check(t, "oldnewhtml", "-html", "old.txt", "new.txt")
-	check(t, "oldnew4html", "-html", "old.txt", "new.txt", "slashslash4.txt")
-	check(t, "oldnewttest", "-delta-test=ttest", "old.txt", "new.txt")
-	check(t, "packagesold", "packagesold.txt")
-	check(t, "packages", "packagesold.txt", "packagesnew.txt")
-	check(t, "units", "units-old.txt", "units-new.txt")
-	check(t, "zero", "-delta-test=none", "zero-old.txt", "zero-new.txt")
-	check(t, "namesort", "-sort=name", "old.txt", "new.txt")
-	check(t, "deltasort", "-sort=delta", "old.txt", "new.txt")
-	check(t, "rdeltasort", "-sort=-delta", "old.txt", "new.txt")
 
-	check(t, "oldcsv", "-geomean", "-csv", "old.txt")
-	check(t, "allcsv", "-geomean", "-csv", "old.txt", "new.txt", "slashslash4.txt", "x386.txt")
-	check(t, "allnosplitcsv", "-geomean", "-csv", "-split", "", dotSlash("new.txt"), dotSlash("old.txt"), dotSlash("slashslash4.txt"), dotSlash("x386.txt")) // note order: new old slashslash4 x386; dotSlash tests common prefix removal
-
-	if dotSlash("x") == "./x" { // Golden files have hardcoded "/" path separators in them
-		check(t, "allnorangecsv", "-geomean", "-csv", "-norange", dotSlash("old.txt"), dotSlash("new.txt"), "slashslash4.txt", "x386.txt") // Mixed ./ tests common prefix non-removal
+	// Get the benchstat output.
+	var got, gotErr bytes.Buffer
+	t.Logf("benchstat %s", strings.Join(args, " "))
+	if err := benchstat(&got, &gotErr, args); err != nil {
+		t.Fatalf("unexpected error: %s", err)
 	}
 
+	// Compare to the golden output.
+	compare(t, name, "stdout", got.Bytes())
+	compare(t, name, "stderr", gotErr.Bytes())
 }
 
-func check(t *testing.T, name string, files ...string) {
-	t.Run(name, func(t *testing.T) {
-		os.Args = append([]string{"benchstat"}, files...)
-		t.Logf("running %v", os.Args)
-		r, w, err := os.Pipe()
-		if err != nil {
+func compare(t *testing.T, name, sub string, got []byte) {
+	t.Helper()
+
+	wantPath := name + "." + sub
+	want, err := ioutil.ReadFile(wantPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Treat a missing file as empty.
+			want = nil
+		} else {
 			t.Fatal(err)
 		}
-		c := make(chan []byte)
-		go func() {
-			data, err := ioutil.ReadAll(r)
-			if err != nil {
-				t.Error(err)
-			}
-			c <- data
-		}()
-		stdout := os.Stdout
-		stderr := os.Stderr
-		os.Stdout = w
-		os.Stderr = w
-		exit = func(code int) { t.Fatalf("exit %d during main", code) }
-		*flagGeomean = false
-		*flagHTML = false
-		*flagNoRange = false
-		*flagDeltaTest = "utest"
-		*flagSplit = flag.Lookup("split").DefValue
+	}
 
-		main()
+	if bytes.Equal(want, got) {
+		return
+	}
 
-		w.Close()
-		os.Stdout = stdout
-		os.Stderr = stderr
-		exit = os.Exit
+	// Write a "got" file for reference.
+	gotPath := name + ".got-" + sub
+	if err := ioutil.WriteFile(gotPath, got, 0666); err != nil {
+		t.Fatalf("error writing %s: %s", gotPath, err)
+	}
 
-		data := <-c
-		golden, err := ioutil.ReadFile(name + ".golden")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(data, golden) {
-			t.Errorf("wrong output: diff have want:\n%s", diff(t, data, golden))
-		}
-	})
-}
-
-// diff returns the output of 'diff -u old new'.
-func diff(t *testing.T, old, new []byte) string {
-	data, err := exec.Command("diff", "-u", writeTemp(t, old), writeTemp(t, new)).CombinedOutput()
+	data, err := exec.Command("diff", "-Nu", wantPath, gotPath).CombinedOutput()
 	if len(data) > 0 {
-		return string(data)
+		t.Errorf("diff -Nu %s %s:\n%s", wantPath, gotPath, string(data))
+		return
 	}
 	// Most likely, "diff not found" so print the bad output so there is something.
-	return "ERROR: " + err.Error() + ": test output = \n" + string(old)
-}
-
-func writeTemp(t *testing.T, data []byte) string {
-	f, err := ioutil.TempFile("", "benchstat_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.Write(data)
-	name := f.Name()
-	f.Close()
-	return name
+	t.Errorf("want:\n%sgot:\n%s", string(want), string(got))
 }

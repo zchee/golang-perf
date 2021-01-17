@@ -1,0 +1,11 @@
+Unit a-bytes assume=exact
+Unit b-bytes assume=exact
+Unit c-bytes assume=exact
+
+note: before
+
+BenchmarkImperceptible 1 1234567890 a-bytes 171717171716 b-bytes 99999930 c-bytes
+
+note: after
+
+BenchmarkImperceptible 1 1234567890 a-bytes 171717171717 b-bytes 99999929 c-bytes

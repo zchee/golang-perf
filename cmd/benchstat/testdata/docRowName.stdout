@@ -1,0 +1,7 @@
+goos: linux
+goarch: amd64
+pkg: golang.org/x/perf/cmd/benchstat/testdata
+       │    new.txt     │
+       │     sec/op     │
+Encode   2.253µ ± 37% ¹
+¹ benchmarks vary in .fullname

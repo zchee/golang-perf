@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: golang.org/x/perf/cmd/benchstat/testdata
+                      │   old.txt   │               new.txt               │
+                      │   sec/op    │   sec/op     vs base                │
+Encode/format=json-48   1.718µ ± 1%   1.423µ ± 1%  -17.20% (p=0.000 n=10)
+Encode/format=gob-48    3.066µ ± 0%   3.070µ ± 2%        ~ (p=0.446 n=10)
+geomean                 2.295µ        2.090µ        -8.94%

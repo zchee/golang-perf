@@ -1,0 +1,12 @@
+.label: zero.txt
+              │    before    │           after           │
+              │   a-bytes    │   a-bytes     vs base     │
+Imperceptible   1.150Gi ± 0%   1.150Gi ± 0%  0.00% (n=1)
+
+              │    before    │           after            │
+              │   b-bytes    │   b-bytes     vs base      │
+Imperceptible   159.9Gi ± 0%   159.9Gi ± 0%  +0.00% (n=1)
+
+              │    before    │           after            │
+              │   c-bytes    │   c-bytes     vs base      │
+Imperceptible   95.37Mi ± 0%   95.37Mi ± 0%  -0.00% (n=1)
