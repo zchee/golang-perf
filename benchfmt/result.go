@@ -19,7 +19,10 @@
 // benchunit, benchmath, and benchproc.
 package benchfmt
 
-import "bytes"
+import (
+	"bytes"
+	"fmt"
+)
 
 // A Result is a single benchmark result and all of its measurements.
 //
@@ -52,6 +55,9 @@ type Result struct {
 
 	// Values is this benchmark's measurements and their units.
 	Values []Value
+
+	// Units is the set of unit metadata in effect for this result.
+	Units Units
 
 	// configPos maps from Config.Key to index in FileConfig. This
 	// may be nil, which indicates the index needs to be
@@ -96,6 +102,7 @@ func (r *Result) Clone() *Result {
 		Name:       append([]byte(nil), r.Name...),
 		Iters:      r.Iters,
 		Values:     append([]Value(nil), r.Values...),
+		Units:      Units{Metadata: append([]UnitMetadata(nil), r.Units.Metadata...)},
 	}
 	for i, cfg := range r.FileConfig {
 		r2.FileConfig[i].Key = cfg.Key
@@ -250,4 +257,77 @@ func (n Name) splitGomaxprocs() (prefix, gomaxprocs []byte) {
 		}
 	}
 	return n, nil
+}
+
+// Units is a collection of unit metadata.
+//
+// Unit metadata gives information that's useful to interpreting
+// values in a given unit. The following metadata keys are predefined:
+//
+// better={higher,lower} indicates whether higher or lower values of
+// this unit are better (indicate an improvement).
+//
+// assume={nothing,exact} indicates what statistical assumption to
+// make when considering distributions of values.
+// `nothing` means to make no statistical assumptions (e.g., use
+// non-parametric methods) and `exact` means to assume measurements are
+// exact (repeated measurement does not increase confidence).
+// The default is `nothing`.
+type Units struct {
+	// Metadata is a slice of unit metadata values. It is only
+	// ever appended to because once a given key is set, its value
+	// cannot be changed.
+	//
+	// Users should not modify this slice directly; instead, use
+	// the Set method. Units internally maintains an index of keys
+	// in this slice. There is one exception to this: for
+	// convenience, new Units can be initialized directly, e.g.,
+	// using a struct literal.
+	Metadata []UnitMetadata
+
+	// index maps from (unit,key) to the index of that key in
+	// Metadata.
+	index map[unitKey]int
+}
+
+// UnitMetadata is a single piece of unit metadata.
+type UnitMetadata struct {
+	Unit  string
+	Key   string
+	Value string
+}
+
+type unitKey struct {
+	unit, key string
+}
+
+// Set sets metadata for the given unit. If this key is already set to
+// a different value for this unit, it returns an error.
+func (u *Units) Set(unit, key, value string) error {
+	if have, ok := u.Get(unit, key); ok {
+		if have == value {
+			return nil
+		}
+		return fmt.Errorf("metadata %s of unit %s already set to %s", key, unit, have)
+	}
+	u.index[unitKey{unit, key}] = len(u.Metadata)
+	u.Metadata = append(u.Metadata, UnitMetadata{unit, key, value})
+	return nil
+}
+
+// Get returns the metadata key for the given unit.
+func (u *Units) Get(unit, key string) (value string, ok bool) {
+	if u.index == nil {
+		// This is a fresh Units. Create the index.
+		u.index = make(map[unitKey]int)
+		for i, m := range u.Metadata {
+			u.index[unitKey{m.Unit, m.Key}] = i
+		}
+	}
+
+	i, ok := u.index[unitKey{unit, key}]
+	if ok {
+		return u.Metadata[i].Value, true
+	}
+	return "", false
 }

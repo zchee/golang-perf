@@ -159,3 +159,43 @@ func TestNameParts(t *testing.T) {
 	check("", "")
 	check("/a/b", "", "/a", "/b")
 }
+
+func TestUnits(t *testing.T) {
+	// Construct a Units as a literal to test that it gets indexed
+	// on first access.
+	u := Units{Metadata: []UnitMetadata{{"ns/op", "a", "1"}}}
+	// Look up a key that exists.
+	if v, ok := u.Get("ns/op", "a"); v != "1" || !ok {
+		t.Errorf("want 1/true, got %v/%v", v, ok)
+	}
+	// Look up a key and unit that don't exist.
+	if v, ok := u.Get("ns/op", "b"); ok {
+		t.Errorf("want false, got %v/%v", v, ok)
+	}
+	if v, ok := u.Get("foo/op", "a"); ok {
+		t.Errorf("want false, got %v/%v", v, ok)
+	}
+
+	// Set a key.
+	if err := u.Set("ns/op", "b", "2"); err != nil {
+		t.Errorf("got error %v", err)
+	}
+	if v, ok := u.Get("ns/op", "b"); v != "2" || !ok {
+		t.Errorf("want 2/true, got %v/%v", v, ok)
+	}
+
+	// Set a key that exists to its current value.
+	if err := u.Set("ns/op", "a", "1"); err != nil {
+		t.Errorf("got error %v", err)
+	}
+
+	// Set a key that exists to a new value.
+	want := "metadata a of unit ns/op already set to 1"
+	if err := u.Set("ns/op", "a", "2"); err == nil || err.Error() != want {
+		t.Errorf("want error %q, got %v", want, err)
+	}
+	// Check that the value didn't change.
+	if v, ok := u.Get("ns/op", "a"); v != "1" || !ok {
+		t.Errorf("want 1/true, got %v/%v", v, ok)
+	}
+}

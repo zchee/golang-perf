@@ -16,6 +16,8 @@ func TestWriter(t *testing.T) {
 key: val
 key1: val1
 
+Unit ns/op a=1 b=2
+Unit MB/sec c=3
 BenchmarkOne 1 1 ns/op
 
 key:

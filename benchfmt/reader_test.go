@@ -87,6 +87,11 @@ func (b *resultBuilder) v(value float64, unit string) *resultBuilder {
 	return b
 }
 
+func (b *resultBuilder) u(unit, key, value string) *resultBuilder {
+	b.res.Units.Metadata = append(b.res.Units.Metadata, UnitMetadata{unit, key, value})
+	return b
+}
+
 func TestReader(t *testing.T) {
 	type testCase struct {
 		name, input string
@@ -151,6 +156,10 @@ BenchmarkBadVal 100 abc
 BenchmarkMissingUnit 100 1
 BenchmarkMissingUnit2 100 1 ns/op 2
 also not a benchmark
+Unit
+Unit ns/op blah
+Unit ns/op a=1
+Unit ns/op a=2
 `,
 			[]*Result{
 				errResult("test:2: missing iteration count"),
@@ -160,6 +169,9 @@ also not a benchmark
 				errResult("test:6: parsing measurement: invalid syntax"),
 				errResult("test:7: missing units"),
 				errResult("test:8: missing units"),
+				errResult("test:10: missing unit"),
+				errResult("test:11: expected key=value"),
+				errResult("test:13: metadata a of unit ns/op already set to 1"),
 			},
 		},
 		{
@@ -186,6 +198,18 @@ BenchmarkOne 100 1 ns/op
 					v(1, "ns/op").res,
 			},
 		},
+		{
+			"unit metadata",
+			`Unit ns/op a=1 b=2
+Unit ns/op c=3
+BenchmarkOne 100 1 ns/op
+`,
+			[]*Result{
+				r("One", 100).
+					u("ns/op", "a", "1").u("ns/op", "b", "2").u("ns/op", "c", "3").
+					v(1, "ns/op").res,
+			},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := parseAll(t, test.input)
@@ -209,6 +233,22 @@ BenchmarkOne 100 1 ns/op
 				t.Error(diff.String())
 			}
 		})
+	}
+}
+
+func TestReaderUnits(t *testing.T) {
+	sr := strings.NewReader(`Unit ns/op a=1`)
+	r := NewReader(sr, "test")
+	for r.Scan() {
+		t.Fatal("unexpected results")
+	}
+	if err := r.Err(); err != nil {
+		t.Fatal("parsing failed: ", err)
+	}
+
+	got := r.Units()
+	if v, ok := got.Get("ns/op", "a"); v != "1" || !ok {
+		t.Errorf("want 1/true, got %v/%v", v, ok)
 	}
 }
 

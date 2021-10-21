@@ -187,3 +187,13 @@ func (f *Files) Result() (*Result, error) {
 func (f *Files) Err() error {
 	return f.err
 }
+
+// Units returns the latest unit metadata.
+//
+// This is useful for consumers that wish to consume an entire stream
+// of benchmark results and then consult unit metadata. Unit metadata
+// can change between the last result and EOF, so this may differ from
+// the last Result().Units after Scan returns false.
+func (f *Files) Units() Units {
+	return f.reader.Units()
+}

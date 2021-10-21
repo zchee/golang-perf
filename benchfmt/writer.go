@@ -18,6 +18,9 @@ type Writer struct {
 	first      bool
 	fileConfig map[string][]byte
 	order      []string
+
+	units     *Units
+	nMetadata int
 }
 
 // NewWriter returns a writer that writes Go benchmark results to w.
@@ -41,6 +44,21 @@ func (w *Writer) Write(res *Result) error {
 				break
 			}
 		}
+	}
+
+	// If any unit metadata was set, write out the changes.
+	if w.units != &res.Units {
+		// This happens on the first call, or if the caller
+		// switches Result streams. If the caller switched
+		// streams, we could wind up emitting incompatible
+		// unit metadata, but there's not a whole lot we can
+		// do about that.
+		w.units = &res.Units
+		w.nMetadata = 0
+	}
+	if len(res.Units.Metadata) > w.nMetadata {
+		w.writeUnitMetadata(res.Units.Metadata[w.nMetadata:])
+		w.nMetadata = len(res.Units.Metadata)
 	}
 
 	// Print the benchmark line.
@@ -108,4 +126,17 @@ func (w *Writer) writeFileConfig(res *Result) {
 	}
 
 	w.buf.WriteByte('\n')
+}
+
+func (w *Writer) writeUnitMetadata(ms []UnitMetadata) {
+	for len(ms) > 0 {
+		unit := ms[0].Unit
+		fmt.Fprintf(&w.buf, "Unit %s", unit)
+		// Collect metadata with the same unit on to one line.
+		for len(ms) > 0 && ms[0].Unit == unit {
+			fmt.Fprintf(&w.buf, " %s=%s", ms[0].Key, ms[0].Value)
+			ms = ms[1:]
+		}
+		fmt.Fprintf(&w.buf, "\n")
+	}
 }

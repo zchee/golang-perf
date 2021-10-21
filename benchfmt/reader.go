@@ -62,6 +62,7 @@ func NewReader(r io.Reader, fileName string) *Reader {
 
 // Reset resets the reader to begin reading from a new input.
 // It also resets all of the file-level configuration values.
+// It does NOT reset unit metadata because it carries across files.
 //
 // initConfig is an alternating sequence of keys and values.
 // Reset will install these as the initial file-level configuration
@@ -97,7 +98,10 @@ func (r *Reader) Reset(ior io.Reader, fileName string, initConfig ...string) {
 	}
 }
 
-var benchmarkPrefix = []byte("Benchmark")
+var (
+	benchmarkPrefix = []byte("Benchmark")
+	unitPrefix      = []byte("Unit")
+)
 
 // Scan advances the reader to the next result and reports whether a
 // result was read.
@@ -121,6 +125,17 @@ func (r *Reader) Scan() bool {
 			// that as an error.
 			r.resultErr = r.parseBenchmarkLine(line)
 			return true
+		}
+		if len(line) > 0 && line[0] == 'U' {
+			// Try parsing a unit metadata line.
+			if ok, err := r.parseUnitLine(line); ok {
+				if err != nil {
+					// Report malformed unit line.
+					r.resultErr = err
+					return true
+				}
+				continue
+			}
 		}
 		if key, val, ok := parseKeyValueLine(line); ok {
 			// Intern key, since there tend to be few
@@ -251,6 +266,48 @@ func (r *Reader) parseBenchmarkLine(line []byte) error {
 	return nil
 }
 
+// parseUnitLine attempts to parse line as a unit metadata line,
+// with ok reporting whether the line was a unit metadata line.
+// If line is a unit metadata line but contains errors,
+// it returns true and a *SyntaxError.
+func (r *Reader) parseUnitLine(line []byte) (ok bool, err error) {
+	var f []byte
+	// Is this a unit metadata line?
+	f, line = splitField(line)
+	if !bytes.Equal(f, unitPrefix) {
+		return false, nil
+	}
+
+	// Consume unit.
+	f, line = splitField(line)
+	if len(f) == 0 {
+		return true, &SyntaxError{r.fileName, r.lineNum, "missing unit"}
+	}
+	unit := r.intern(f)
+
+	// Consume key=value pairs. If we encounter any errors, we
+	// report the first one but keep trying to parse the line.
+	for {
+		f, line = splitField(line)
+		if len(f) == 0 {
+			break
+		}
+		eq := bytes.IndexByte(f, '=')
+		if eq <= 0 {
+			if err == nil {
+				err = &SyntaxError{r.fileName, r.lineNum, "expected key=value"}
+			}
+			continue
+		}
+		key := r.intern(f[:eq])
+		value := r.intern(f[eq+1:])
+		if err1 := r.result.Units.Set(unit, key, value); err1 != nil && err == nil {
+			err = &SyntaxError{r.fileName, r.lineNum, err1.Error()}
+		}
+	}
+	return true, err
+}
+
 func (r *Reader) intern(x []byte) string {
 	const maxIntern = 1024
 	if s, ok := r.interns[string(x)]; ok {
@@ -287,6 +344,16 @@ func (r *Reader) Result() (*Result, error) {
 // Reader.
 func (r *Reader) Err() error {
 	return r.err
+}
+
+// Units returns the latest unit metadata.
+//
+// This is useful for consumers that wish to consume an entire stream
+// of benchmark results and then consult unit metadata. Unit metadata
+// can change between the last result and EOF, so this may differ from
+// the last Result().Units after Scan returns false.
+func (r *Reader) Units() Units {
+	return r.result.Units
 }
 
 // Parsing helpers.
